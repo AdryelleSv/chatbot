@@ -1,127 +1,137 @@
-const qrcode = require('qrcode-terminal');
+const express = require('express');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
+const app = express();
+const port = 3000;
 
-const representatives = {
+const representantes = {
     junior: '558199663039@c.us',
     walquiria: '558198492778@c.us'
 };
-const representativeIds = Object.values(representatives);
+const representantesIds = Object.values(representantes);
 
-const client = new Client({
-    authStrategy: new LocalAuth()
-});
+const cliente = new Client({ authStrategy: new LocalAuth() });
 
 const activeChats = new Map(); // Cliente -> Representante ativo
 const idleTimers = new Map(); // Gerencia timers de inatividade
 const users = new Map(); // Armazena os nomes dos clientes
+let restartAttempts = 0; // Número de tentativas de reinicialização
 
-client.on('qr', (qr) => {
-    console.log('QR Code recebido, escaneie com o WhatsApp:');
-    qrcode.generate(qr, { small: true });
-});
+app.use(express.static('public'));
 
-client.on('ready', () => {
-    console.log('Bot está pronto!');
+app.get('/qrcode', (req, res) => {
+    cliente.on('qr', (qr) => {
+        QRCode.toDataURL(qr, (err, url) => {
+            if (err) {
+                res.status(500).send('Erro ao gerar QR Code');
+            } else {
+                res.json({ qr: url });
+            }
+        });
+    });
+    app.get('/qrcode', (req, res) => {
+        res.sendFile(__dirname + '/index.html');
+    });
+
+    cliente.on('ready', () => {
+        console.log('Bot está pronto!');
+        restartAttempts = 0;
+    });
+    cliente.initialize();
 });
 
 // Função para resetar o timer de inatividade
 const resetIdleTimer = (chatId) => {
+    if (activeChats.has(chatId)) return;
+
     if (idleTimers.has(chatId)) clearTimeout(idleTimers.get(chatId));
 
     const firstTimer = setTimeout(() => {
-        if (activeChats.has(chatId)) {
-            client.sendMessage(chatId, 'Você está inativo há algum tempo. Deseja continuar o atendimento? Responda "Sim" em até 2 minutos para não encerrar.');
+        if (activeChats.has(chatId)) return;
 
-            const secondTimer = setTimeout(() => {
-                if (activeChats.has(chatId)) {
-                    activeChats.delete(chatId);
-                    client.sendMessage(chatId, 'Conversa encerrada por inatividade. Se precisar de ajuda, é só me chamar! 😊');
-                }
-            }, 120000); // 2 minutos
+        cliente.sendMessage(chatId, 'Você está inativo há algum tempo. Deseja continuar o atendimento? Responda "Sim" em até 2 minutos para não encerrar.');
 
-            idleTimers.set(chatId, secondTimer);
-        }
-    }, 110000); // 1m50s
+        const secondTimer = setTimeout(() => {
+            if (activeChats.has(chatId)) return;
 
+            users.delete(chatId);
+            cliente.sendMessage(chatId, 'Conversa encerrada por inatividade. Se precisar de ajuda, é só me chamar! 😊');
+        }, 120000);
+        idleTimers.set(chatId, secondTimer);
+    }, 110000); //
     idleTimers.set(chatId, firstTimer);
 };
 
-client.on('message', async (message) => {
+cliente.on('message', async (message) => {
     const chatId = message.from;
     resetIdleTimer(chatId);
 
-    // Se o cliente ainda não forneceu um nome, pergunta primeiro
     if (!users.has(chatId)) {
         if (message.body.trim().length < 3) {
-            client.sendMessage(chatId, 'Olá! 😊 Como gostaria de ser chamado?');
+            cliente.sendMessage(chatId, 'Olá! 😊 Como gostaria de ser chamado?');
             return;
         }
-        users.set(chatId, message.body.trim()); // Armazena o nome informado
-
-        // Após armazenar o nome, envia o menu personalizado
-        client.sendMessage(chatId, `Olá ${message.body}, tudo bem? 😊
-            \nBem-vindo(a) à Central de Relacionamentos da Lins Fios. Escolha uma opção:
-            \n1️⃣ - 📖 Catálogo Fios
-            \n2️⃣ - 📖 Catálogo Linhas
-            \n3️⃣ - 👥 Falar com um representante
-            \n4️⃣ - 👩‍💻 Financeiro / Solicitação de Boletos
-            \nPor favor, digite o número correspondente à sua escolha.`);
-        return;
-    }
-    // Se um representante estiver atendendo, o chatbot apenas repassa as mensagens
-    if (activeChats.has(chatId)) {
-        const repId = activeChats.get(chatId);
-
-        // Cliente mandando mensagem → Repassa para o representante
-        if (!representativeIds.includes(chatId)) {
-            client.sendMessage(repId, `Cliente (${users.get(chatId)}): ${message.body}`);
-        }
-        // Representante mandando mensagem → Repassa para o cliente
-        else {
-            const clientId = [...activeChats.entries()].find(([_, v]) => v === chatId)?.[0];
-            if (clientId) {
-                client.sendMessage(clientId, `Representante: ${message.body}`);
-            }
-        }
+        users.set(chatId, message.body.trim());
+        cliente.sendMessage(chatId, `Olá ${message.body}, tudo bem? 😊\n\nBem-vindo(a) à Central de Relacionamentos da Lins Fios. Escolha uma opção:\n\n1️⃣ - 📖 Catálogo Fios\n2️⃣ - 📖 Catálogo Linhas\n3️⃣ - 👥 Falar com um representante\n4️⃣ - 👩‍💻 Financeiro / Solicitação de Boletos\n\nPor favor, digite o número correspondente à sua escolha.`);
         return;
     }
 
-    // Processamento do menu principal
     switch (message.body.toLowerCase()) {
         case '1':
-            const fiosPdf = MessageMedia.fromFilePath('./pdfs/Catalogo_Digital_Fios.pdf');
-            client.sendMessage(chatId, fiosPdf, { caption: '📄 Aqui está o catálogo digital de fios.' });
+            try {
+                const fiosPdf = await MessageMedia.fromFilePath('./pdfs/Catalogo_Digital_Fios.pdf');
+                await cliente.sendMessage(chatId, fiosPdf, { caption: '📄 Aqui está o catálogo digital de fios.' });
+            } catch (erro) {
+                cliente.sendMessage(chatId, "Erro ao carregar o catálogo de fios. Tente novamente mais tarde.");
+                console.error("Erro ao carregar o arquivo PDF de fios:", erro);
+            }
             break;
 
         case '2':
-            const linhasPdf = MessageMedia.fromFilePath('./pdfs/Catalogo_Digital_Linhas.pdf');
-            client.sendMessage(chatId, linhasPdf, { caption: '📄 Aqui está o catálogo digital de linhas.' });
+            try {
+                const linhasPdf = await MessageMedia.fromFilePath('./pdfs/Catalogo_Digital_Linhas.pdf');
+                await cliente.sendMessage(chatId, linhasPdf, { caption: '📄 Aqui está o catálogo digital de linhas.' });
+            } catch (erro) {
+                cliente.sendMessage(chatId, "Erro ao carregar o catálogo de linhas. Tente novamente mais tarde.");
+                console.error("Erro ao carregar o arquivo PDF de linhas:", erro);
+            }
             break;
 
         case '3':
-            activeChats.set(chatId, representatives.junior);
+            const representanteDisponivel = representantesIds[0];
+            activeChats.set(chatId, representanteDisponivel);
             message.reply(`Você será atendido pelo nosso representante. Caso prefira *Para encerrar, digite "#sair"*.`);
-            client.sendMessage(representatives.junior, `Novo atendimento iniciado por ${users.get(chatId)} (${chatId}).`);
+            cliente.sendMessage(representanteDisponivel, `Novo atendimento iniciado por ${users.get(chatId)} (${chatId}).`);
             break;
-
         case '4':
             message.reply(`Você pode falar com o setor financeiro diretamente pelo link:\n\nhttps://wa.me/558198492778`);
             break;
-
         default:
-            message.reply(`Desculpe, não entendi. Escolha uma das opções abaixo:\n\n1️⃣ - 📖 Catálogo Fios\n2️⃣ - 📖 Catálogo Linhas\n3️⃣ - 👥 Falar com um representante\n4️⃣ - 👩‍💻 Financeiro / Solicitação de Boletos\n\nDigite apenas o número da opção desejada.`);
+            message.reply(`Desculpe, não entendi. Escolha uma opção valida`);
     }
 });
 
-client.on('error', (error) => console.error('Erro detectado:', error));
-
-client.on('disconnected', (reason) => {
-    console.log(`Bot desconectado: ${reason}`);
-    console.log('Tentando reiniciar...');
-    client.initialize();
+cliente.on('error', (error) => {
+    console.error('Erro detectado:', error);
+    if (restartAttempts < 3) {
+        restartAttempts++;
+        console.log(`Tentando reiniciar... (Tentativa ${restartAttempts}/3)`);
+        setTimeout(() => cliente.initialize(), 5000);
+    } else {
+        console.log("Falha ao reiniciar após múltiplas tentativas. Verifique o erro acima.");
+    }
 });
 
-client.initialize().catch((error) => {
+cliente.on('disconnected', (reason) => {
+    console.log(`Bot desconectado: ${reason}`);
+    console.log('Tentando reiniciar...');
+    cliente.initialize();
+});
+app.listen(port, () => {
+    console.log(`Servidor rodando em http://localhost:${port}`);
+});
+
+cliente.initialize().catch((error) => {
     console.error('Erro ao inicializar o cliente:', error);
-    setTimeout(() => client.initialize(), 5000);
 });

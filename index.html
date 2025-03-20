@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code WhatsApp Bot</title>
+</head>
+<body>
+    <h1>Escaneie o QR Code com o WhatsApp</h1>
+    <div id="qrcode-container">
+        <img id="qrcode" src="" alt="QR Code" style="width: 200px; height: 200px;">
+    </div>
+
+    <script>
+        // Função para obter o QR Code do servidor
+        function fetchQRCode() {
+            fetch('/qrcode')
+                .then(response => response.json())
+                .then(data => {
+                    const qrcodeImg = document.getElementById('qrcode');
+                    qrcodeImg.src = data.qr;
+                })
+                .catch(error => console.error('Erro ao carregar o QR Code:', error));
+        }
+
+        // Carregar o QR Code quando a página for carregada
+        window.onload = fetchQRCode;
+    </script>
+</body>
+</html>
