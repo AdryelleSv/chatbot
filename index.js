@@ -2,7 +2,7 @@ const qrcode = require("qrcode-terminal");
 const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
 
 const representantes = {
-  adryelle: "5581988695541@c.us",
+  adryelle: "558188695541@c.us",
 };
 
 const representantesIds = Object.values(representantes);
@@ -14,7 +14,6 @@ const users = new Map(); // Armazena os nomes dos clientes
 let restartAttempts = 0; // Número de tentativas de reinicialização
 let textQrCode = undefined;
 cliente.on("qr", (qr) => {
-  console.log("QR Code recebido, escaneie com o WhatsApp:");
   textQrCode = qr
 });
 
@@ -23,15 +22,12 @@ cliente.on("ready", () => {
   restartAttempts = 0; // Reseta contagem de falhas após sucesso
 });
 
-// Função para resetar o timer de inatividade
+//RESETA O TIMER DE OCIOSIDADE
 const resetIdleTimer = (chatId) => {
-  if (activeChats.has(chatId)) return; // Não resetar se estiver com representante
-
-  if (idleTimers.has(chatId)) clearTimeout(idleTimers.get(chatId));
-
+  if (activeChats.has(chatId)) return; 
+  if (idleTimers.has(chatId)) clearTimeout(idleTimers.get(chatId)); //PERGUNTA SE AINDA ESTA ATIVO
   const firstTimer = setTimeout(() => {
     if (activeChats.has(chatId)) return;
-
     cliente.sendMessage(
       chatId,
       'Você está inativo há algum tempo. Deseja continuar o atendimento? Responda "Sim" em até 2 minutos para não encerrar.'
@@ -45,10 +41,10 @@ const resetIdleTimer = (chatId) => {
         chatId,
         "Conversa encerrada por inatividade. Se precisar de ajuda, é só me chamar! 😊"
       );
-    }, 120000); // 2 minutos
+    }, 120000);
 
-    idleTimers.set(chatId, secondTimer);
-  }, 110000); // 1m50s
+  idleTimers.set(chatId, secondTimer);
+  }, 110000); 
 
   idleTimers.set(chatId, firstTimer);
 };
@@ -58,22 +54,22 @@ cliente.on("message", async (message) => {
   resetIdleTimer(chatId);
 
   if (!users.has(chatId)) {
-    if (message.body.trim().length < 3) {
-      cliente.sendMessage(chatId, "Olá! 😊 Como gostaria de ser chamado?");
+    const nome = message.body.trim();
+    if (nome.length < 3) {
+      client.sendMessage(chatId, 'Olá! 😊 Como gostaria de ser chamado? (Mínimo de 3 letras)');
       return;
     }
-    users.set(chatId, message.body.trim());
-
-    cliente.sendMessage(
-      chatId,
-      `Olá ${message.body}, tudo bem? 😊
-            \nBem-vindo(a) à Central de Relacionamentos da Lins Fios. Escolha uma opção:
-            \n1️⃣ - 📖 Catálogo Fios
-            \n2️⃣ - 📖 Catálogo Linhas
-            \n3️⃣ - 👥 Falar com um representante
-            \n4️⃣ - 👩‍💻 Financeiro / Solicitação de Boletos
-            \nPor favor, digite o número correspondente à sua escolha.`
-    );
+    users.set(chatId, nome);
+    cliente.sendMessage(chatId, `Olá ${nome}, tudo bem? 😊
+      \n
+      \nBem-vindo(a) à Central de Relacionamentos da Lins Fios. Escolha uma opção:
+      \n
+      \n1️⃣ - 📖 Catálogo Fios
+      \n2️⃣ - 📖 Catálogo Linhas
+      \n3️⃣ - 👥 Falar com um representante
+      \n4️⃣ - 👩‍💻 Financeiro / Solicitação de Boletos
+      \n
+      \nPor favor, digite o número correspondente à sua escolha.`);
     return;
   }
 
@@ -96,90 +92,55 @@ cliente.on("message", async (message) => {
 
     // Cliente -> Representante
     if (!representantesIds.includes(chatId)) {
-      cliente.sendMessage(
-        repId,
-        `Cliente (${users.get(chatId)}): ${message.body}`
-      );
-    }
-    // Representante -> Cliente
-    else {
-      const clienteId = [...activeChats.entries()].find(
-        ([_, v]) => v === chatId
-      )?.[0];
-      if (clienteId) {
-        cliente.sendMessage(clienteId, `Representante: ${message.body}`);
+      cliente.sendMessage(repId, `Cliente (${users.get(chatId)}): ${message.body}`);
+    } else {
+      const clientId = [...activeChats.entries()].find(([_, v]) => v === chatId)?.[0];
+      if (clientId) {
+        cliente.sendMessage(clientId, `Representante: ${message.body}`);
       }
     }
     return;
   }
 
   switch (message.body.trim()) {
-    case "1":
-      try {
-        const fiosPdf = await MessageMedia.fromFilePath(
-          "./pdfs/Catalogo_Digital_Fios.pdf"
-        );
-        cliente.sendMessage(chatId, fiosPdf, {
-          caption: "📄 Aqui está o catálogo digital de fios.",
-        });
-      } catch (err) {
-        cliente.sendMessage(
-          chatId,
-          "Erro ao carregar o catálogo de fios. Tente novamente mais tarde."
-        );
-        console.error("Erro ao carregar o arquivo PDF de fios:", err);
+          case '1':
+              try {
+                  const fiosPdf = await MessageMedia.fromFilePath('./pdfs/Catalogo_Digital_Fios.pdf');
+                  cliente.sendMessage(chatId, fiosPdf, { caption: '📄 Aqui está o catálogo digital de fios.' });
+              } catch (err) {
+                  cliente.sendMessage(chatId, "Erro ao carregar o catálogo de fios. Tente novamente mais tarde.");
+                  console.error("Erro ao carregar o arquivo PDF de fios:", err);
+              }
+              break;
+  
+          case '2':
+              try {
+                  const linhasPdf = await MessageMedia.fromFilePath('./pdfs/Catalogo_Digital_Linhas.pdf');
+                  cliente.sendMessage(chatId, linhasPdf, { caption: '📄 Aqui está o catálogo digital de linhas.' });
+              } catch (err) {
+                  cliente.sendMessage(chatId, "Erro ao carregar o catálogo de linhas. Tente novamente mais tarde.");
+                  console.error("Erro ao carregar o arquivo PDF de linhas:", err);
+              }
+              break;
+  
+          case '3':
+              cliente.sendMessage(chatId, "Aguarde enquanto conectamos você com um representante...");
+              setTimeout(() => {
+                  activeChats.set(chatId, representantes.adryelle);
+                  cliente.sendMessage(chatId, `Você será atendido por nosso representante. Para encerrar, digite "#sair".`);
+                  cliente.sendMessage(representantes.adryelle, `Novo atendimento iniciado por ${users.get(chatId)} (${chatId}).`);
+              }, 2000);
+              break;
+  
+          case '4':
+              cliente.sendMessage(chatId, `Você pode falar com o setor financeiro diretamente pelo link:\n\nhttps://wa.me/558198492778`);
+              break;
+  
+          default:
+              cliente.sendMessage(chatId, `Desculpe, não entendi. Escolha uma das opções`);
       }
-      break;
-
-    case "2":
-      try {
-        const linhasPdf = await MessageMedia.fromFilePath(
-          "./pdfs/Catalogo_Digital_Linhas.pdf"
-        );
-        cliente.sendMessage(chatId, linhasPdf, {
-          caption: "📄 Aqui está o catálogo digital de linhas.",
-        });
-      } catch (err) {
-        cliente.sendMessage(
-          chatId,
-          "Erro ao carregar o catálogo de linhas. Tente novamente mais tarde."
-        );
-        console.error("Erro ao carregar o arquivo PDF de linhas:", err);
-      }
-      break;
-
-    case "3":
-      cliente.sendMessage(
-        chatId,
-        "Aguarde enquanto conectamos você com um representante..."
-      );
-      setTimeout(() => {
-        activeChats.set(chatId, representantes.adryelle);
-        cliente.sendMessage(
-          chatId,
-          `Você será atendido por nosso representante. Para encerrar, digite "#sair".`
-        );
-        cliente.sendMessage(
-          representantes.adryelle,
-          `Novo atendimento iniciado por ${users.get(chatId)} (${chatId}).`
-        );
-      }, 2000);
-      break;
-
-    case "4":
-      cliente.sendMessage(
-        chatId,
-        `Você pode falar com o setor financeiro diretamente pelo link:\n\nhttps://wa.me/558198492778`
-      );
-      break;
-
-    default:
-      cliente.sendMessage(
-        chatId,
-        `Desculpe, não entendi. Escolha uma das opções abaixo:\n\n1️⃣ - 📖 Catálogo Fios\n2️⃣ - 📖 Catálogo Linhas\n3️⃣ - 👥 Falar com um representante\n4️⃣ - 👩‍💻 Financeiro / Solicitação de Boletos\n\nDigite apenas o número da opção desejada.`
-      );
-  }
-});
+  });
+  
 
 cliente.on("error", (error) => {
   console.error("Erro detectado:", error);
@@ -211,7 +172,7 @@ const app = express();
 
 app.listen(3000, () => console.log("Servidor iniciado na porta 3000"));
 app.get("/", (req, res) => {
-  const filePath = path.join(__dirname, "public","index.html");
+  const filePath = path.join(__dirname, "public", "index.html");
 
   // Lendo o arquivo HTML
   fs.readFile(filePath, "utf8", (err, data) => {
