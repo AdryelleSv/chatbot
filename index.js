@@ -2,7 +2,7 @@ const qrcode = require("qrcode-terminal");
 const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
 
 const representantes = {
-  adryelle: "558188695541@c.us",
+  adryelle: "558199663039@c.us",
 };
 
 const representantesIds = Object.values(representantes);
@@ -11,7 +11,7 @@ const client = new Client({ authStrategy: new LocalAuth() });
 const activeChats = new Map(); // client -> Representante ativo
 const idleTimers = new Map(); // Gerencia timers de inatividade
 const users = new Map(); // Armazena os nomes dos clients
-let restartAttempts = 0; // Número de tentativas de reinicialização
+let restartAttempts = 1; // Número de tentativas de reinicialização
 let textQrCode = undefined;
 client.on("qr", (qr) => {
   textQrCode = qr
@@ -53,7 +53,9 @@ client.on("message", async (message) => {
   const chatId = message.from;
   resetIdleTimer(chatId);
 
-  if (!users.has(chatId)) {
+  if (activeChats.has(chatId)) {
+    const repId = activeChats.get(chatId); // ID do representante vinculado ao cliente
+
     if (!message.body.trim().match(/^[a-zA-ZÀ-ÿ\s]{3,}$/)) {
       client.sendMessage(chatId, 'Olá! 😊 Antes de começarmos, como gostaria de ser chamado? (Apenas letras, mínimo 3 caracteres)');
       return;
@@ -81,15 +83,25 @@ client.on("message", async (message) => {
     }
 
     // client -> Representante
-    if (!representantesIds.includes(chatId)) {
+    if (representantesIds.includes(chatId)) {
       client.sendMessage(repId, `client (${users.get(chatId)}): ${message.body}`);
     } else {
       const clientId = [...activeChats.entries()].find(([_, v]) => v === chatId)?.[0];
       if (clientId) {
-        client.sendMessage(clientId, `📩 Representante: ${message.body}`);
+        if (clientId) {
+          console.log(`🔄 Enviando mensagem do representante (${chatId}) para o cliente (${clientId})`);
+          client.sendMessage(clientId, `📩 Representante: ${message.body}`);
+        } else {
+          console.log(`⚠️ Nenhum cliente ativo vinculado ao representante ${chatId}`);
+        }
       }
+      else {
+        // Cliente enviando mensagem para o representante
+        console.log(`🔄 Cliente (${chatId}) enviando para representante (${repId})`);
+        client.sendMessage(repId, `Cliente (${users.get(chatId)}): ${message.body}`);
+      }
+      return;
     }
-    return;
   }
 
   switch (message.body.trim()) {
